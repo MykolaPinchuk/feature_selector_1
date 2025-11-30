@@ -25,6 +25,12 @@ python -m feature_selector.cli \
   --target-col self \
   --time-col year \
   --main-metric roc_auc \
+  --drop-features id \
+  --target-binarize-threshold 0 \
+  --model-max-depth 4 \
+  --model-min-child-weight 20 \
+  --model-subsample 0.7 \
+  --model-colsample-bytree 0.7 \
   --results-dir results \
   --output-json artifacts/rwm5yr_fs.json
 ```
@@ -55,5 +61,6 @@ print(result.must_keep)
 
 - Target column must be binary `0/1`. If the data contains raw categoricals, the loader raises an error to avoid implicit encoding.
 - PRAUC@10 is implemented via sample-weight adjustment to simulate a 10% minority rate.
-- Adjust FS parameters via CLI flags or directly on the config dataclasses (e.g., number of FS models, SHAP block sizes, permutation thresholds).
-- Each run also writes detailed artifacts (summary JSON, permutation/shap/gain CSVs, candidate metric table, and feature lists) to `results/<dataset>_<timestamp>/` for manual inspection.
+- Adjust FS parameters via CLI flags or directly on the config dataclasses (e.g., number of FS models, SHAP block sizes, permutation thresholds). Use `--drop-features col1 col2` to exclude columns upfront, `--target-binarize-threshold 0` to convert count targets (e.g., `hospvis > 0`) into binary labels, and `--model-*` overrides (depth, min/child weight, subsample, colsample, reg_lambda/alpha, gamma, eta, estimators, scale_pos_weight or `--auto-scale-pos-weight`) to tighten regularization when needed.
+- Exploratory data analysis artifacts (schema tables plus per-column histograms) are stored under `results/eda_full/`.
+- Each run writes detailed artifacts (summary JSON, permutation/SHAP/gain CSVs, candidate metric table, final Train/Val/Test metrics, and feature lists) to `results/<dataset>_<timestamp>/` for manual inspection.

@@ -34,6 +34,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shap-bottom-k", type=int, default=60)
     parser.add_argument("--output-json", help="Optional path to dump JSON summary")
     parser.add_argument("--leakage-features", nargs="*", help="Known leakage features to drop")
+    parser.add_argument("--drop-features", nargs="*", help="Columns to exclude before FS")
+    parser.add_argument(
+        "--target-binarize-threshold",
+        type=float,
+        help="If set, convert target to 1 when value > threshold (useful for count targets)",
+    )
+    parser.add_argument("--model-max-depth", type=int, help="Override FS model max_depth")
+    parser.add_argument("--model-min-child-weight", type=float, help="Override FS model min_child_weight")
+    parser.add_argument("--model-subsample", type=float, help="Override FS model subsample")
+    parser.add_argument("--model-colsample-bytree", type=float, help="Override FS model colsample_bytree")
+    parser.add_argument("--model-reg-lambda", type=float, help="Override FS model L2 regularization")
+    parser.add_argument("--model-reg-alpha", type=float, help="Override FS model L1 regularization")
+    parser.add_argument("--model-gamma", type=float, help="Override FS model gamma")
+    parser.add_argument("--model-eta", type=float, help="Override FS model learning rate")
+    parser.add_argument("--model-n-estimators", type=int, help="Override FS model n_estimators")
+    parser.add_argument("--model-scale-pos-weight", type=float, help="Override scale_pos_weight")
+    parser.add_argument(
+        "--auto-scale-pos-weight",
+        action="store_true",
+        help="Automatically set scale_pos_weight to negative/positive ratio on TRAIN",
+    )
     parser.add_argument("--random-seed", type=int, default=13)
     parser.add_argument(
         "--results-dir",
@@ -57,6 +78,28 @@ def build_config(args: argparse.Namespace) -> FeatureSelectorConfig:
         shap_bottom_k=args.shap_bottom_k,
     )
     model_config = ModelConfig()
+    if args.model_max_depth is not None:
+        model_config.max_depth = args.model_max_depth
+    if args.model_min_child_weight is not None:
+        model_config.min_child_weight = int(args.model_min_child_weight)
+    if args.model_subsample is not None:
+        model_config.subsample = args.model_subsample
+    if args.model_colsample_bytree is not None:
+        model_config.colsample_bytree = args.model_colsample_bytree
+    if args.model_reg_lambda is not None:
+        model_config.reg_lambda = args.model_reg_lambda
+    if args.model_reg_alpha is not None:
+        model_config.reg_alpha = args.model_reg_alpha
+    if args.model_gamma is not None:
+        model_config.gamma = args.model_gamma
+    if args.model_eta is not None:
+        model_config.eta = args.model_eta
+    if args.model_n_estimators is not None:
+        model_config.n_estimators = args.model_n_estimators
+    if args.model_scale_pos_weight is not None:
+        model_config.scale_pos_weight = args.model_scale_pos_weight
+    if args.auto_scale_pos_weight:
+        model_config.auto_scale_pos_weight = True
 
     return FeatureSelectorConfig(
         target_col=args.target_col,
@@ -66,6 +109,8 @@ def build_config(args: argparse.Namespace) -> FeatureSelectorConfig:
         permutation_config=perm_config,
         model_config=model_config,
         leakage_features=args.leakage_features,
+        drop_features=args.drop_features,
+        target_binarize_threshold=args.target_binarize_threshold,
         random_seed=args.random_seed,
     )
 
@@ -79,6 +124,8 @@ def result_to_dict(result) -> Dict[str, Any]:
         "chosen_features": result.chosen_features,
         "candidate_metrics": result.candidate_metrics,
         "static_filter_report": result.static_filter_report,
+        "excluded_features": result.excluded_features,
+        "final_split_metrics": result.final_split_metrics,
     }
 
 
@@ -114,6 +161,11 @@ def persist_detailed_outputs(result, run_dir: Path, summary: Dict[str, Any]) -> 
     cand_df = pd.DataFrame(result.candidate_metrics).T
     cand_df.index.name = "candidate_set"
     cand_df.to_csv(run_dir / "candidate_metrics.csv")
+
+    if result.final_split_metrics:
+        final_df = pd.DataFrame(result.final_split_metrics).T
+        final_df.index.name = "split"
+        final_df.to_csv(run_dir / "final_metrics.csv")
 
     (run_dir / "chosen_features.txt").write_text("\n".join(result.chosen_features))
     (run_dir / "must_keep.txt").write_text("\n".join(result.must_keep))

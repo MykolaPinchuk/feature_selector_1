@@ -14,6 +14,7 @@ This document summarizes the feature-selection workflow implemented in `feature_
 1. **Data ingestion** (`feature_selector.data`):
    - Accepts CSV, Parquet, or pickle inputs (or `pydataset` name).
    - Validates target is binary integer and ensures all feature columns are already numeric/encoded.
+   - Optional `target_binarize_threshold` converts numeric targets to indicators (e.g., `hospvis > 0`).
    - Parses the time column into `datetime64`.
 
 2. **Static pre-filtering** (`feature_selector.preprocessing`):
@@ -32,6 +33,7 @@ This document summarizes the feature-selection workflow implemented in `feature_
 4. **Feature selection models** (`feature_selector.fs_models`):
    - Trains a small ensemble (default 3) of moderately regularized XGBoost classifiers on `TRAIN_FS_SUB`, validating on `HOLDOUT_FS`.
    - Seeds differ per model to diversify trees.
+   - Hyperparameters expose `max_depth`, `min_child_weight`, `subsample`, `colsample_bytree`, `eta`, `n_estimators`, `reg_lambda`, `reg_alpha`, `gamma`, and `scale_pos_weight` (auto-computed on TRAIN when enabled).
 
 5. **SHAP triage**:
    - TreeSHAP computed on `FS_EVAL` for each FS model.
@@ -58,13 +60,14 @@ This document summarizes the feature-selection workflow implemented in `feature_
      - `filtered` = remove dropped + overfit suspects.
      - `aggressive` = must-keep subset.
 
-8. **Ablation models**:
+8. **Ablation models & final evaluation**:
    - Retrain XGBoost on full TRAIN, evaluate on VAL for each candidate set.
    - Metrics recorded:
      - ROC-AUC (`sklearn.metrics.roc_auc_score`).
      - PR-AUC (average precision).
      - PR-AUC@10% minority rate (sample-weighted average precision).
    - Choose final feature set as the smallest candidate whose main metric is within 0.5% relative of the best VAL score.
+   - Train a final model on TRAIN using the chosen features and score it on TRAIN, VAL, and TEST; results are saved in `final_metrics.csv`.
 
 9. **Persistence & reporting**:
    - CLI writes JSON summary, candidate metrics, permutation SHAP/gain tables, and chosen feature lists under `results/<dataset>_<timestamp>/`.

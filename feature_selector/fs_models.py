@@ -41,6 +41,7 @@ def train_fs_model(
     y_valid: pd.Series,
     model_config: ModelConfig,
     seed: int,
+    scale_pos_weight: float,
 ) -> XGBClassifier:
     model = XGBClassifier(
         max_depth=model_config.max_depth,
@@ -48,8 +49,11 @@ def train_fs_model(
         subsample=model_config.subsample,
         colsample_bytree=model_config.colsample_bytree,
         reg_lambda=model_config.reg_lambda,
+        reg_alpha=model_config.reg_alpha,
+        gamma=model_config.gamma,
         learning_rate=model_config.eta,
         n_estimators=model_config.n_estimators,
+        scale_pos_weight=scale_pos_weight,
         random_state=seed,
         n_jobs=model_config.n_jobs,
         tree_method=model_config.tree_method,
@@ -72,11 +76,12 @@ def train_fs_ensemble(
     X_valid: pd.DataFrame,
     y_valid: pd.Series,
     model_config: ModelConfig,
+    scale_pos_weight: float,
 ) -> List[FSModel]:
     ensemble: List[FSModel] = []
     for idx in range(model_config.n_models):
         seed = model_config.random_state_base + idx
-        model = train_fs_model(X_train, y_train, X_valid, y_valid, model_config, seed)
+        model = train_fs_model(X_train, y_train, X_valid, y_valid, model_config, seed, scale_pos_weight)
         ensemble.append(FSModel(model=model, seed=seed))
     return ensemble
 

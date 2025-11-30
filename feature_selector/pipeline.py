@@ -37,6 +37,8 @@ class FeatureSelectionResult:
     shap_importance: pd.Series
     gain_importance: pd.Series
     static_filter_report: Dict[str, List[str]]
+    excluded_features: List[str]
+    final_split_metrics: Dict[str, Dict[str, float]]
 
 
 class FeatureSelectorPipeline:
@@ -48,7 +50,19 @@ class FeatureSelectorPipeline:
     def run(self, df: pd.DataFrame) -> FeatureSelectionResult:
         df = df.copy()
         df[self.config.time_col] = parse_time_column(df, self.config.time_col)
+        if self.config.target_binarize_threshold is not None:
+            threshold = self.config.target_binarize_threshold
+            df[self.config.target_col] = (df[self.config.target_col] > threshold).astype(int)
         ensure_binary_target(df, self.config.target_col)
+
+        excluded_features: List[str] = []
+        if self.config.drop_features:
+            for col in self.config.drop_features:
+                if col in {self.config.target_col, self.config.time_col}:
+                    continue
+                if col in df.columns:
+                    df = df.drop(columns=col)
+                    excluded_features.append(col)
 
         feature_cols = [c for c in df.columns if c not in {self.config.target_col, self.config.time_col}]
         ensure_numeric_features(df, feature_cols)
@@ -66,6 +80,16 @@ class FeatureSelectorPipeline:
         df = df[[self.config.time_col, self.config.target_col] + filtered_features].copy()
         splits = time_ordered_split(df, self.config.time_col, self.config.split_config)
         fs_splits = create_fs_splits(splits.train, self.config.time_col, self.config.split_config)
+        if self.config.model_config.auto_scale_pos_weight:
+            train_target = splits.train[self.config.target_col]
+            positives = float(train_target.sum())
+            negatives = float(len(train_target) - positives)
+            if positives > 0:
+                self.scale_pos_weight = negatives / positives
+            else:
+                self.scale_pos_weight = 1.0
+        else:
+            self.scale_pos_weight = self.config.model_config.scale_pos_weight
         train_fs_sub = contiguous_subsample(
             fs_splits.train_fs,
             self.config.split_config.train_fs_subsample_size,
@@ -102,6 +126,7 @@ class FeatureSelectorPipeline:
         overfit_suspect = self._detect_overfit(permutation_table)
         candidate_sets = self._build_candidate_sets(filtered_features, classification, overfit_suspect)
         candidate_metrics, chosen_features = self._run_ablation_models(splits, candidate_sets)
+        final_split_metrics = self._evaluate_final_model(splits, chosen_features)
 
         return FeatureSelectionResult(
             must_keep=classification["must_keep"],
@@ -115,6 +140,8 @@ class FeatureSelectorPipeline:
             shap_importance=shap_result.mean_importance,
             gain_importance=gain_scores,
             static_filter_report=static_report.summary(),
+            excluded_features=excluded_features,
+            final_split_metrics=final_split_metrics,
         )
 
     def _train_fs_models(
@@ -133,6 +160,7 @@ class FeatureSelectorPipeline:
             X_valid,
             y_valid,
             self.config.model_config,
+            self.scale_pos_weight,
         )
 
     def _triage_features(
@@ -279,23 +307,7 @@ class FeatureSelectorPipeline:
         val_df: pd.DataFrame,
         feature_set: List[str],
     ) -> Dict[str, float]:
-        from xgboost import XGBClassifier
-
-        model = XGBClassifier(
-            max_depth=self.config.model_config.max_depth,
-            min_child_weight=self.config.model_config.min_child_weight,
-            subsample=self.config.model_config.subsample,
-            colsample_bytree=self.config.model_config.colsample_bytree,
-            reg_lambda=self.config.model_config.reg_lambda,
-            learning_rate=self.config.model_config.eta,
-            n_estimators=self.config.model_config.n_estimators,
-            random_state=self.config.random_seed,
-            n_jobs=self.config.model_config.n_jobs,
-            tree_method=self.config.model_config.tree_method,
-            objective="binary:logistic",
-            eval_metric= "auc",
-            verbosity=0,
-        )
+        model = self._create_model()
         X_train = train_df[feature_set]
         y_train = train_df[self.config.target_col]
         X_val = val_df[feature_set]
@@ -314,7 +326,7 @@ class FeatureSelectorPipeline:
         self,
         splits: GlobalSplits,
         candidate_sets: Dict[str, List[str]],
-    ) -> tuple[Dict[str, Dict[str, float]], List[str]]:
+        ) -> tuple[Dict[str, Dict[str, float]], List[str]]:
         metrics: Dict[str, Dict[str, float]] = {}
         for name, features in candidate_sets.items():
             if len(features) == 0:
@@ -341,3 +353,49 @@ class FeatureSelectorPipeline:
                 eligible.sort(key=lambda item: (len(candidate_sets[item[0]]), -item[1]))
                 chosen = candidate_sets[eligible[0][0]]
         return metrics, chosen
+
+    def _create_model(self):
+        from xgboost import XGBClassifier
+
+        return XGBClassifier(
+            max_depth=self.config.model_config.max_depth,
+            min_child_weight=self.config.model_config.min_child_weight,
+            subsample=self.config.model_config.subsample,
+            colsample_bytree=self.config.model_config.colsample_bytree,
+            reg_lambda=self.config.model_config.reg_lambda,
+            reg_alpha=self.config.model_config.reg_alpha,
+            gamma=self.config.model_config.gamma,
+            learning_rate=self.config.model_config.eta,
+            n_estimators=self.config.model_config.n_estimators,
+            scale_pos_weight=self.scale_pos_weight,
+            random_state=self.config.random_seed,
+            n_jobs=self.config.model_config.n_jobs,
+            tree_method=self.config.model_config.tree_method,
+            objective="binary:logistic",
+            eval_metric="auc",
+            verbosity=0,
+        )
+
+    def _evaluate_final_model(
+        self,
+        splits: GlobalSplits,
+        chosen_features: List[str],
+    ) -> Dict[str, Dict[str, float]]:
+        if not chosen_features:
+            return {}
+        model = self._create_model()
+        X_train = splits.train[chosen_features]
+        y_train = splits.train[self.config.target_col]
+        model.fit(X_train, y_train, verbose=False)
+
+        evaluations: Dict[str, Dict[str, float]] = {}
+        for name, df in (
+            ("train", splits.train),
+            ("val", splits.val),
+            ("test", splits.test),
+        ):
+            X = df[chosen_features]
+            y = df[self.config.target_col]
+            preds = model.predict_proba(X)[:, 1]
+            evaluations[name] = compute_metrics(y.to_numpy(), preds)
+        return evaluations
