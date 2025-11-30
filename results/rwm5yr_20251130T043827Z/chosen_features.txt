@@ -1,0 +1,11 @@
+age
+docvis
+edlevel
+edlevel2
+educ
+female
+hhninc
+id
+kids
+married
+outwork

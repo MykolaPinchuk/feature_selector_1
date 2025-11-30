@@ -1,0 +1,60 @@
+{
+  "must_keep": [
+    "age",
+    "docvis",
+    "edlevel",
+    "edlevel2",
+    "educ",
+    "female",
+    "hhninc",
+    "id",
+    "kids",
+    "married",
+    "outwork"
+  ],
+  "useful": [],
+  "dropped": [
+    "edlevel1",
+    "edlevel3",
+    "edlevel4",
+    "hospvis"
+  ],
+  "overfit_suspect": [],
+  "chosen_features": [
+    "age",
+    "docvis",
+    "edlevel",
+    "edlevel2",
+    "educ",
+    "female",
+    "hhninc",
+    "id",
+    "kids",
+    "married",
+    "outwork"
+  ],
+  "candidate_metrics": {
+    "baseline_all": {
+      "roc_auc": 0.8410957575348619,
+      "prauc": 0.40182767391823176,
+      "prauc_at_10": 0.4857648483654737
+    },
+    "filtered": {
+      "roc_auc": 0.8381783906087565,
+      "prauc": 0.39359399922904115,
+      "prauc_at_10": 0.4765674703586269
+    },
+    "aggressive": {
+      "roc_auc": 0.8390798538258943,
+      "prauc": 0.40046080116113275,
+      "prauc_at_10": 0.4835548937020987
+    }
+  },
+  "static_filter_report": {
+    "leakage": [],
+    "constant": [],
+    "quasi_constant": [],
+    "missingness": [],
+    "duplicates": []
+  }
+}

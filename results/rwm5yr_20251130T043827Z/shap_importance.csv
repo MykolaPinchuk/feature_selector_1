@@ -1,0 +1,16 @@
+feature,shap_importance
+id,0.38963827
+docvis,0.20357056
+hospvis,0.01646912
+edlevel,0.071942575
+age,0.4352961
+outwork,0.7915597
+female,0.22557457
+married,0.054661322
+kids,0.24412547
+hhninc,0.56739604
+educ,0.32768843
+edlevel1,0.0042825826
+edlevel2,0.064458296
+edlevel3,0.017214103
+edlevel4,0.00072474027
