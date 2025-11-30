@@ -3,3 +3,7 @@ __pycache__/
 results/
 agent_logs/
 .context-profile.yml
+experiments/*/runs/
+experiments/*/eda/
+.venv
+

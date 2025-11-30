@@ -1,0 +1,31 @@
+dataset_name: rwm5yr
+data_source: rwm5yr
+time_col: year
+target_col: hospvis
+target_binarize_threshold: 0
+run_eda: true
+results_dir: experiments/rwm5yr/runs
+eda_output_dir: experiments/rwm5yr/eda
+drop_features:
+  - id
+split_config:
+  train_frac: 0.6
+  val_frac: 0.2
+  test_frac: 0.2
+  fs_holdout_frac: 0.25
+  fs_eval_sample_size: 5000
+  train_fs_subsample_size: 15000
+model_config:
+  max_depth: 3
+  min_child_weight: 30
+  subsample: 0.6
+  colsample_bytree: 0.6
+  reg_lambda: 5.0
+  reg_alpha: 0.1
+  gamma: 0.5
+  eta: 0.05
+  n_estimators: 250
+  auto_scale_pos_weight: true
+permutation_config:
+  shap_top_k: 60
+  shap_bottom_k: 60

@@ -5,6 +5,7 @@ POC for a computationally efficient feature selector targeted at time-ordered bi
 ### Structure
 
 - `feature_selector/` – Python package with the pipeline, configs, metrics, CLI, and helpers.
+- `experiments/` – dataset-specific folders (configs + generated runs/EDA).
 - `requirements.txt` – dependencies (Python 3.11).
 - `agents.md`, `prd.md` – design docs/instructions.
 
@@ -15,27 +16,19 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
-
 ### Usage
 
-Run the CLI (defaults to the `rwm5yr` dataset from `pydataset`, `self` as the target, `year` as the time column):
+Provide a YAML config under `experiments/<dataset>/config.yml` (see `experiments/rwm5yr/config.yml` for a template). Then run:
 
 ```bash
-python -m feature_selector.cli \
-  --target-col self \
-  --time-col year \
-  --main-metric roc_auc \
-  --drop-features id \
-  --target-binarize-threshold 0 \
-  --model-max-depth 4 \
-  --model-min-child-weight 20 \
-  --model-subsample 0.7 \
-  --model-colsample-bytree 0.7 \
-  --results-dir results \
-  --output-json artifacts/rwm5yr_fs.json
+python -m feature_selector.cli --config experiments/rwm5yr/config.yml
 ```
 
-To point at your own data, provide `--data-source path/to/data.csv` (Parquet and pickle supported). Columns must already be numeric (categorical encoding handled upstream). The CLI performs:
+The config declares the data source (CSV/Parquet path or `pydataset` name), target/time columns, preprocessing knobs (drop lists, binarization threshold), split ratios, and any model overrides. CLI flags can still override config values if needed (e.g., `--model-max-depth 4`).
+
+Each run writes artifacts to `experiments/<dataset>/runs/<timestamp>/`, and (if enabled) EDA bundles go to `experiments/<dataset>/eda/`.
+
+High-level pipeline steps:
 
 1. Static filters for leakage, constant/quasi-constant, high-missingness, and duplicate features.
 2. Time-ordered TRAIN/VAL/TEST splits plus TRAIN_FS/HOLDOUT_FS inside TRAIN.
@@ -45,7 +38,7 @@ To point at your own data, provide `--data-source path/to/data.csv` (Parquet and
 6. Aggregation/classification into must-keep/useful/drop sets, overfit diagnostics via gain vs permutation.
 7. Ablation models on VAL (all features vs filtered vs aggressive) with ROC-AUC, PR-AUC, and PR-AUC@10%.
 
-Outputs are printed as JSON (and optionally written to `--output-json`). Programmatic use is available via:
+Outputs are printed as JSON and stored inside the run directory (summary, permutation/SHAP/gain CSVs, metrics, feature lists, static-filter report). Programmatic use is still available:
 
 ```python
 from feature_selector import FeatureSelectorConfig, FeatureSelectorPipeline
@@ -61,6 +54,5 @@ print(result.must_keep)
 
 - Target column must be binary `0/1`. If the data contains raw categoricals, the loader raises an error to avoid implicit encoding.
 - PRAUC@10 is implemented via sample-weight adjustment to simulate a 10% minority rate.
-- Adjust FS parameters via CLI flags or directly on the config dataclasses (e.g., number of FS models, SHAP block sizes, permutation thresholds). Use `--drop-features col1 col2` to exclude columns upfront, `--target-binarize-threshold 0` to convert count targets (e.g., `hospvis > 0`) into binary labels, and `--model-*` overrides (depth, min/child weight, subsample, colsample, reg_lambda/alpha, gamma, eta, estimators, scale_pos_weight or `--auto-scale-pos-weight`) to tighten regularization when needed.
-- Exploratory data analysis artifacts (schema tables plus per-column histograms) are stored under `results/eda_full/`.
-- Each run writes detailed artifacts (summary JSON, permutation/SHAP/gain CSVs, candidate metric table, final Train/Val/Test metrics, and feature lists) to `results/<dataset>_<timestamp>/` for manual inspection.
+- Adjust FS parameters via CLI flags or directly on the config dataclasses (e.g., number of FS models, SHAP block sizes, permutation thresholds). Use `drop_features` to exclude columns upfront, `target_binarize_threshold` to convert count targets (e.g., `hospvis > 0`) into binary labels, and `model_config` overrides (depth, min-child weight, subsample/colsample, reg_lambda/alpha, gamma, eta, estimators, `scale_pos_weight` or `auto_scale_pos_weight`) to tighten regularization when needed.
+- Exploratory data analysis artifacts (schema tables plus per-column histograms) live under `experiments/<dataset>/eda/` when `run_eda: true`.

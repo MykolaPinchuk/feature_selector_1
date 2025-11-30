@@ -12,7 +12,7 @@ This document summarizes the feature-selection workflow implemented in `feature_
 ## Pipeline Stages
 
 1. **Data ingestion** (`feature_selector.data`):
-   - Accepts CSV, Parquet, or pickle inputs (or `pydataset` name).
+   - Accepts CSV, Parquet, or pickle inputs (or `pydataset` name) specified via the experiment config (`experiments/<dataset>/config.yml`).
    - Validates target is binary integer and ensures all feature columns are already numeric/encoded.
    - Optional `target_binarize_threshold` converts numeric targets to indicators (e.g., `hospvis > 0`).
    - Parses the time column into `datetime64`.
@@ -69,9 +69,19 @@ This document summarizes the feature-selection workflow implemented in `feature_
    - Choose final feature set as the smallest candidate whose main metric is within 0.5% relative of the best VAL score.
    - Train a final model on TRAIN using the chosen features and score it on TRAIN, VAL, and TEST; results are saved in `final_metrics.csv`.
 
-9. **Persistence & reporting**:
-   - CLI writes JSON summary, candidate metrics, permutation SHAP/gain tables, and chosen feature lists under `results/<dataset>_<timestamp>/`.
-   - `report.md` in each run folder offers a human-readable recap.
+9. **Persistence, EDA & reporting**:
+   - When `run_eda: true`, the CLI produces histogram plots and `eda_report.md` under `experiments/<dataset>/eda/`.
+   - Run artifacts (summary JSON, candidate metrics, permutation SHAP/gain tables, final metrics, feature lists) are stored under `experiments/<dataset>/runs/<dataset>_<timestamp>/`.
+   - Each run folder also includes a Markdown `report.md` for quick review.
+
+---
+
+## Experiment Workflow
+
+1. Create a dataset folder under `experiments/` (see `experiments/rwm5yr/`).
+2. Define `config.yml` with `data_source`, `target_col`, `time_col`, threshold/drop lists, split ratios, and model/permutation overrides.
+3. Run the CLI with `python -m feature_selector.cli --config experiments/<dataset>/config.yml` (optional CLI flags override config values).
+4. Inspect `experiments/<dataset>/eda/` (if enabled) and the latest folder in `experiments/<dataset>/runs/` for outputs.
 
 ---
 
